@@ -50,8 +50,8 @@ pub enum TokenType {
 }
 impl TokenType {
     pub fn get_id(&self) -> String {
-        if let TokenType::Id(s) = s {
-            s
+        if let TokenType::Id(s) = self {
+            return String::from(s);
         }
         String::from("")
     }

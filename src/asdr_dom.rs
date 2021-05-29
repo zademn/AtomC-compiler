@@ -7,7 +7,7 @@ pub struct SyntaxAnalyser {
     pub consumed_token: Option<Token>,
     pub current_table_idx: usize, // current symbol table
     pub symbol_tables: Vec<Context>,
-    pub current_symbol: Option<Symbol>
+    pub current_symbol: Option<Symbol>,
 }
 impl Default for SyntaxAnalyser {
     fn default() -> Self {
@@ -65,15 +65,14 @@ impl SyntaxAnalyser {
         return false;
     }
 
-    fn add_var(&mut self, token: Token, s_type: SymbolType) {
-        if let Some(s) = self.current_symbol {
-            match s.class{
-            ClassType::ClsStruct => {
-                let token_name = token.token_type.get_id();
-                
+    fn add_var(&mut self, token: &Token, s_type: &mut SymbolType) {
+        if let Some(s) = self.current_symbol.clone() {
+            match s.class {
+                ClassType::ClsStruct => {
+                    let token_name = token.token_type.get_id();
                     let mut symbol = Symbol {
                         name: token_name,
-                        symbol_type: SymbolType::default(),
+                        symbol_type: s_type.clone(),
                         class: ClassType::ClsVar,
                         storage: StorageType::MemStruct,
                         line: token.line,
@@ -83,31 +82,28 @@ impl SyntaxAnalyser {
                     };
 
                     self.symbol_tables[self.current_table_idx].add_symbol(symbol);
-                
-            }
-            ClassType::ClsFunc => {
-                let token_name = token.token_type.get_id();
+                }
+                ClassType::ClsFunc => {
+                    let token_name = token.token_type.get_id();
 
                     let mut symbol = Symbol {
                         name: token_name,
-                        symbol_type: SymbolType::default(),
+                        symbol_type: s_type.clone(),
                         class: ClassType::ClsVar,
                         storage: StorageType::MemLocal,
                         line: token.line,
-                        depth:self.symbol_tables[self.current_table_idx].depth,
+                        depth: self.symbol_tables[self.current_table_idx].depth,
                         am: None,
                         table: self.current_table_idx,
                     };
 
                     self.symbol_tables[self.current_table_idx].add_symbol(symbol);
-                
-            }
-            ClassType::ClsVar => {
-                let token_name = token.token_type.get_id();
-                
+                }
+                _ => {
+                    let token_name = token.token_type.get_id();
                     let mut symbol = Symbol {
                         name: token_name,
-                        symbol_type: SymbolType::default(),
+                        symbol_type: s_type.clone(),
                         class: ClassType::ClsVar,
                         storage: StorageType::MemGlobal,
                         line: token.line,
@@ -117,10 +113,8 @@ impl SyntaxAnalyser {
                     };
 
                     self.symbol_tables[self.current_table_idx].add_symbol(symbol);
-                
-            },
-            _ => {}
-        }
+                }
+            }
         }
     }
     /// Sets current token and idx to the given idx
@@ -169,24 +163,27 @@ impl SyntaxAnalyser {
                 // Save consumed token
                 let token_temp = self.token_vec[self.current_token_idx - 1].clone();
                 if self.consume(TokenType::Lacc.discriminant_value()) {
-                    let token_name = token_temp.token_type.get_id();   
+                    let token_name = token_temp.token_type.get_id();
                     let mut symbol = Symbol {
                         name: token_name,
                         symbol_type: SymbolType {
                             type_base: TypeName::TbStruct,
                             struct_symbol: None,
-                            num_elements: 0,
+                            num_elements: -1,
                         },
                         class: ClassType::ClsStruct,
                         storage: StorageType::MemGlobal,
                         line: token_temp.line,
-                        depth: self.symbol_tables.len(),
+                        depth: self.symbol_tables[self.current_table_idx].depth,
                         am: Some(vec![]),
                         table: 0,
                     };
-                    // Add a new context 
-                    self.symbol_tables[self.current_table_idx].add_symbol(symbol);
-                    self.symbol_tables.push(Context::new(StorageType::MemStruct, self.current_table_idx+1));
+                    // Add a new context
+                    self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
+                    self.symbol_tables.push(Context::new(
+                        StorageType::MemStruct,
+                        self.current_table_idx + 1,
+                    ));
                     self.current_table_idx += 1;
                     self.current_symbol = Some(symbol);
 
@@ -201,6 +198,7 @@ impl SyntaxAnalyser {
                         if self.consume(TokenType::Semicolon.discriminant_value()) {
                             self.symbol_tables.pop();
                             self.current_table_idx = old_table_idx;
+                            self.current_symbol = None;
                             //dbg!(&self.symbol_tables);
                             return true;
                         } else {
@@ -208,7 +206,7 @@ impl SyntaxAnalyser {
                         }
                     } else {
                         self.token_error("Expected closing bracket `}` at the end of the struct");
-                        }
+                    }
                 } // No error if no `{`
             } else {
                 self.token_error("Expected struct identifier");
@@ -224,30 +222,39 @@ impl SyntaxAnalyser {
     fn rule_decl_var(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
         let mut symbol_type = SymbolType::default();
+        //let mut token_temp: Token;
         if self.rule_type_base(&mut symbol_type) {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-                
-                let is_array = self.rule_array_decl(&mut symbol_type);
+                let mut token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                let mut is_array = self.rule_array_decl(&mut symbol_type);
                 if !is_array {
                     symbol_type.num_elements = -1;
                 }
-                self.add_var(&token_temp, &symbol_type, c: ClassType)
+                self.add_var(&token_temp, &mut symbol_type);
                 loop {
                     if self.consume(TokenType::Comma.discriminant_value()) {
+                        is_array = true;
                         if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                            self.rule_array_decl(&mut symbol_type);
+                            token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                            if !self.rule_array_decl(&mut symbol_type) {
+                                symbol_type.num_elements = -1;
+                            };
                         } else {
                             self.token_error("Expected variable identifier after comma `,` ");
                         }
                     } else {
                         break;
                     }
+                    self.add_var(&token_temp, &mut symbol_type);
                 }
                 if self.consume(TokenType::Semicolon.discriminant_value()) {
                     return true;
                 } else {
-                    self.token_error("Expected semicolon `;` after the variable declaration");
+                    if (is_array) {
+                        self.token_error("Expected semicolon `;` after the variable declaration");
+                    } else {
+                        self.token_error("Expected '=', ',', ';' or array declaration")
+                    }
                 }
             } else {
                 self.token_error("Expected identifier");
@@ -260,32 +267,38 @@ impl SyntaxAnalyser {
     /// Type declaration
     fn rule_type_base(&mut self, symbol_type: &mut SymbolType) -> bool {
         let start_token_idx = self.current_token_idx;
-        if (self.consume(TokenType::Int.discriminant_value()) && {symbol_type.type_base = TypeName::TbInt; true})
-            || (self.consume(TokenType::Double.discriminant_value()) && {symbol_type.type_base = TypeName::TbDouble; true})
-            || (self.consume(TokenType::Char.discriminant_value()) && {symbol_type.type_base = TypeName::TbChar; true})
-            || (self.consume(TokenType::Struct.discriminant_value()) && {
-                if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                    let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-                    let token_name = token_temp.token_type.get_id();
-                    match self.symbol_tables[self.current_table_idx].find_symbol(&token_name) {
-                        Some(s) => if s.class != ClassType::ClsStruct {
+        if (self.consume(TokenType::Int.discriminant_value()) && {
+            symbol_type.type_base = TypeName::TbInt;
+            true
+        }) || (self.consume(TokenType::Double.discriminant_value()) && {
+            symbol_type.type_base = TypeName::TbDouble;
+            true
+        }) || (self.consume(TokenType::Char.discriminant_value()) && {
+            symbol_type.type_base = TypeName::TbChar;
+            true
+        }) || (self.consume(TokenType::Struct.discriminant_value()) && {
+            if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
+                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                let token_name = token_temp.token_type.get_id();
+                match self.symbol_tables[self.current_table_idx].find_symbol(&token_name) {
+                    Some(s) => {
+                        if s.class != ClassType::ClsStruct {
                             panic!("{} is not a struct", token_name);
                         } else {
                             symbol_type.type_base == TypeName::TbStruct;
                             symbol_type.struct_symbol = Some(Box::new(s));
-                        },
-                        None => panic! ("{} is undefined", token_name),
+                        }
                     }
-                    true
-                } else {
-                    self.token_error("Missing / invalid struct identifier");
-                    false
+                    None => self.token_error(&format!("{} is undefined", token_name)),
                 }
-            })
-        {
+                true
+            } else {
+                self.token_error("Missing / invalid struct identifier");
+                false
+            }
+        }) {
             return true;
         }
-        
 
         // if self.consume(TokenType::Struct.discriminant_value()) {
         //     if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
@@ -319,29 +332,70 @@ impl SyntaxAnalyser {
     /// typeName: typeBase arrayDecl? ;
     fn rule_type_name(&mut self, symbol_type: &mut SymbolType) -> bool {
         if self.rule_type_base(symbol_type) {
-            if !self.rule_array_decl(symbol_type){
+            if !self.rule_array_decl(symbol_type) {
                 symbol_type.num_elements = -1;
             };
             return true;
         }
         return false;
     }
+
+    fn decl_func_context(&mut self, token: &Token, symbol_type: &mut SymbolType) {
+        let token_name = token.token_type.get_id();
+        let mut symbol = Symbol {
+            name: token_name,
+            symbol_type: symbol_type.clone(),
+            class: ClassType::ClsFunc,
+            storage: StorageType::MemGlobal,
+            line: token.line,
+            depth: self.symbol_tables[self.current_table_idx].depth,
+            am: Some(vec![]), // Init func arguments
+            table: 0,
+        };
+        // Add a new context
+        self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
+        // Add function context
+        self.symbol_tables.push(Context::new(
+            StorageType::MemLocal,
+            self.current_table_idx + 1,
+        ));
+        self.current_table_idx += 1;
+        self.current_symbol = Some(symbol);
+    }
     /// declFunc: ( typeBase MUL? | VOID ) ID
     ///                     LPAR ( funcArg ( COMMA funcArg )* )? RPAR
     ///                     stmCompound ;
     fn rule_decl_func(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
+        let mut symbol_type: SymbolType = SymbolType::default();
+
+        let mut is_decl_func = false;
+        let mut ok = false;
         let has_type = {
-            if self.rule_type_base() {
-                self.consume(TokenType::Mul.discriminant_value());
+            if self.rule_type_base(&mut symbol_type) {
+                is_decl_func = self.consume(TokenType::Mul.discriminant_value());
+                if !is_decl_func {
+                    symbol_type.num_elements = -1;
+                } else {
+                    symbol_type.num_elements = 0;
+                }
                 true
             } else {
                 false
             }
         };
-        if has_type || self.consume(TokenType::Void.discriminant_value()) {
+        if has_type
+            || (self.consume(TokenType::Void.discriminant_value()) && {
+                is_decl_func = true;
+                symbol_type.type_base = TypeName::TbVoid;
+                true
+            })
+        {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
+                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                let token_name = token_temp.token_type.get_id();
                 if self.consume(TokenType::Lpar.discriminant_value()) {
+                    self.decl_func_context(&token_temp, &mut symbol_type);
                     self.rule_func_arg(); // funcarg is optional
                     loop {
                         if self.consume(TokenType::Comma.discriminant_value()) {
@@ -355,6 +409,9 @@ impl SyntaxAnalyser {
                     }
                     if self.consume(TokenType::Rpar.discriminant_value()) {
                         if self.rule_stm_compound() {
+                            self.symbol_tables.pop();
+                            self.current_table_idx -= 1;
+                            self.current_symbol = None;
                             return true;
                         } else {
                             self.token_error("Expected statement after function declaration")
@@ -372,12 +429,39 @@ impl SyntaxAnalyser {
         return false;
     }
 
+    fn add_func_arg(&mut self, token: &Token, symbol_type: &mut SymbolType) {
+        let token_name = token.token_type.get_id();
+        let mut symbol = Symbol {
+            name: token_name,
+            symbol_type: symbol_type.clone(),
+            class: ClassType::ClsVar,
+            storage: StorageType::MemArg,
+            line: token.line,
+            depth: self.symbol_tables[self.current_table_idx].depth,
+            am: None, // Init func arguments
+            table: 0,
+        };
+        // Add a new context
+        self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
+        self.current_symbol
+            .as_mut()
+            .unwrap()
+            .am
+            .as_mut()
+            .unwrap()
+            .push(symbol);
+    }
     /// funcArg: typeBase ID arrayDecl? ;
     fn rule_func_arg(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_type_base() {
+        let mut symbol_type = SymbolType::default();
+        if self.rule_type_base(&mut symbol_type) {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                self.rule_array_decl();
+                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                if !self.rule_array_decl(&mut symbol_type) {
+                    symbol_type.num_elements = -1;
+                };
+                self.add_func_arg(&token_temp, &mut symbol_type);
                 return true;
             } else {
                 self.token_error("Expected function argument identifier");
@@ -510,6 +594,9 @@ impl SyntaxAnalyser {
     fn rule_stm_compound(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
         if self.consume(TokenType::Lacc.discriminant_value()) {
+            self.current_table_idx += 1;
+            self.symbol_tables
+                .push(Context::new(StorageType::MemLocal, self.current_table_idx));
             loop {
                 let temp_idx = self.current_token_idx;
                 if {
@@ -524,6 +611,8 @@ impl SyntaxAnalyser {
                 }
             }
             if self.consume(TokenType::Racc.discriminant_value()) {
+                self.symbol_tables.pop();
+                self.current_table_idx -= 1;
                 return true;
             } else {
                 self.token_error("Expected } at the end of the statement")
@@ -726,8 +815,9 @@ impl SyntaxAnalyser {
     /// (int)(double)x;
     fn rule_expr_cast(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
+        let mut symbol_type = SymbolType::default();
         if self.consume(TokenType::Lpar.discriminant_value()) {
-            if self.rule_type_name() {
+            if self.rule_type_name(&mut symbol_type) {
                 if self.consume(TokenType::Rpar.discriminant_value()) {
                     if self.rule_expr_cast() {
                         return true;
