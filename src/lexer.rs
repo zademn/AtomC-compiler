@@ -1,7 +1,6 @@
 //#![allow(dead_code)]
 use std::fs;
 
-
 // Tokens
 
 #[derive(Debug, Clone)]
@@ -49,10 +48,16 @@ pub enum TokenType {
     Racc,
     Error,
 }
-impl TokenType{
-    pub fn discriminant_value(&self) -> u8{
+impl TokenType {
+    pub fn get_id(&self) -> String {
+        if let TokenType::Id(s) = s {
+            s
+        }
+        String::from("")
+    }
+    pub fn discriminant_value(&self) -> u8 {
         // Safety: https://rust-lang.github.io/rfcs/2363-arbitrary-enum-discriminant.html
-        unsafe {*(self as *const Self as *const u8)}
+        unsafe { *(self as *const Self as *const u8) }
     }
 }
 
@@ -575,7 +580,7 @@ impl Iterator for Lexer {
                         token_string.push(c);
                     }
                     _ => {
-                        *text_idx-=1;
+                        *text_idx -= 1;
                         return Some(Token {
                             token_type: TokenType::CtInt(0),
                             line: *current_line,

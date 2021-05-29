@@ -1,11 +1,13 @@
 mod asdr;
+mod asdr_dom;
 mod lexer;
+mod symbols;
 use clap::{App, Arg};
 use std::fs;
 
 //use lexer::get_tokens;
+use asdr_dom::SyntaxAnalyser;
 use lexer::Lexer;
-use asdr::SyntaxAnalyser;
 
 fn main() -> Result<(), &'static str> {
     let matches = App::new("AtomC compiler")
@@ -26,13 +28,13 @@ fn main() -> Result<(), &'static str> {
     // Get contents to a file as a string
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
     // Print contents to debug
-    println!("{}", contents);
+    //println!("{}", contents);
 
     let mut lexer = Lexer::from_string(contents);
     let token_vec = lexer.get_tokens();
-    for elem in token_vec.iter() {
-        println!("{:?}", elem);
-    }
+    // for elem in token_vec.iter() {
+    //     println!("{:?}", elem);
+    // }
 
     let mut syntax_analyser: SyntaxAnalyser = SyntaxAnalyser::new(token_vec);
     syntax_analyser.analyse_syntax();
