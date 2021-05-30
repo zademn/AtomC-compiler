@@ -20,20 +20,20 @@ impl SyntaxAnalyser {
     /// New function. Takes a Vec<Token> and sets the current token as the first one.
     /// If the provided Vec<Token> is empty set the consumed token to None
     pub fn new(token_vec: Vec<Token>) -> Self {
-        if token_vec.len() == 0 {
+        if token_vec.is_empty() {
             Default::default()
         }
-        return Self {
-            token_vec: token_vec,
+        Self {
+            token_vec,
             current_token_idx: 0,
             consumed_token: None,
-        };
+        }
     }
     /// Start function. Use this function to analyse the syntax of the Vec<Token> provided in the constructor
     pub fn analyse_syntax(&mut self) -> bool {
         let x = self.rule_unit();
         //dbg!(&x);
-        return x;
+        x
     }
 
     /// Error function. Takes a message. Prints the line of the current_token and the message provided
@@ -58,7 +58,7 @@ impl SyntaxAnalyser {
             self.current_token_idx += 1;
             return true;
         }
-        return false;
+        false
     }
 
     /// Sets current token and idx to the given idx
@@ -90,7 +90,7 @@ impl SyntaxAnalyser {
         } else {
             self.token_error("Top level error: Expected function / struct / variable definition");
         }
-        return false;
+        false
     }
 
     /// declStruct: STRUCT ID LACC declVar* RACC SEMICOLON ;
@@ -125,7 +125,7 @@ impl SyntaxAnalyser {
             }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// declVar:  typeBase ID arrayDecl? ( COMMA ID arrayDecl? )* SEMICOLON ;
     /// Examples:
@@ -157,12 +157,12 @@ impl SyntaxAnalyser {
             }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// typeBase: INT | DOUBLE | CHAR | STRUCT ID ;
     /// Type declaration
     fn rule_type_base(&mut self) -> bool {
-        let start_token_idx = self.current_token_idx;
+        let _start_token_idx = self.current_token_idx;
         if self.consume(TokenType::Int.discriminant_value())
             || self.consume(TokenType::Double.discriminant_value())
             || self.consume(TokenType::Char.discriminant_value())
@@ -187,7 +187,7 @@ impl SyntaxAnalyser {
         //     // Reset token if sequence not satisfied
         //     self.set_current_token(start_token_idx);
         // }
-        return false;
+        false
     }
     /// arrayDecl: LBRACKET expr? RBRACKET ;
     /// Examples:
@@ -203,7 +203,7 @@ impl SyntaxAnalyser {
             }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// typeName: typeBase arrayDecl? ;
     fn rule_type_name(&mut self) -> bool {
@@ -211,7 +211,7 @@ impl SyntaxAnalyser {
             self.rule_array_decl();
             return true;
         }
-        return false;
+        false
     }
     /// declFunc: ( typeBase MUL? | VOID ) ID
     ///                     LPAR ( funcArg ( COMMA funcArg )* )? RPAR
@@ -226,37 +226,30 @@ impl SyntaxAnalyser {
                 false
             }
         };
-        if has_type || self.consume(TokenType::Void.discriminant_value()) {
-            if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                if self.consume(TokenType::Lpar.discriminant_value()) {
-                    self.rule_func_arg(); // funcarg is optional
-                    loop {
-                        if self.consume(TokenType::Comma.discriminant_value()) {
-                            if self.rule_func_arg() {
-                            } else {
-                                self.token_error("Expected function argument after ,");
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                    if self.consume(TokenType::Rpar.discriminant_value()) {
-                        if self.rule_stm_compound() {
-                            return true;
-                        } else {
-                            self.token_error("Expected statement after function declaration")
-                        }
+        if (has_type || self.consume(TokenType::Void.discriminant_value())) && self.consume(TokenType::Id("".to_string()).discriminant_value()) && self.consume(TokenType::Lpar.discriminant_value()) {
+            self.rule_func_arg(); // funcarg is optional
+            loop {
+                if self.consume(TokenType::Comma.discriminant_value()) {
+                    if self.rule_func_arg() {
                     } else {
-                        self.token_error("Expected `)` at the end of function declaration");
+                        self.token_error("Expected function argument after ,");
                     }
+                } else {
+                    break;
                 }
             }
-            // else {
-            //     self.token_error("Expected function identifier");
-            // }
+            if self.consume(TokenType::Rpar.discriminant_value()) {
+                if self.rule_stm_compound() {
+                    return true;
+                } else {
+                    self.token_error("Expected statement after function declaration")
+                }
+            } else {
+                self.token_error("Expected `)` at the end of function declaration");
+            }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// funcArg: typeBase ID arrayDecl? ;
@@ -271,7 +264,7 @@ impl SyntaxAnalyser {
             }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// stm: stmCompound
@@ -391,7 +384,7 @@ impl SyntaxAnalyser {
             return true;
         };
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// stmCompound: LACC ( declVar | stm )* RACC ;
     fn rule_stm_compound(&mut self) -> bool {
@@ -417,7 +410,7 @@ impl SyntaxAnalyser {
             }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// expr: exprAssign ;
     fn rule_expr(&mut self) -> bool {
@@ -426,7 +419,7 @@ impl SyntaxAnalyser {
             return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// exprAssign: exprUnary ASSIGN exprAssign | exprOr ;
@@ -449,18 +442,16 @@ impl SyntaxAnalyser {
             return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// exprOr: exprOr OR exprAnd | exprAnd ;
     fn rule_expr_or(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_and() {
-            if self.rule_expr_or1() {
-                return true;
-            }
+        if self.rule_expr_and() && self.rule_expr_or1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// exprOr1: (OR exprAnd exprOr1)?
@@ -476,19 +467,17 @@ impl SyntaxAnalyser {
             }
         };
         //self.current_token_idx = start_token_idx;
-        return true;
+        true
     }
 
     /// exprAnd: exprAnd AND exprEq | exprEq ;
     fn rule_expr_and(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_eq() {
-            if self.rule_expr_and1() {
-                return true;
-            }
+        if self.rule_expr_eq() && self.rule_expr_and1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// exprAnd1:  (AND exprEq | exprAnd1)? ;
     fn rule_expr_and1(&mut self) -> bool {
@@ -499,18 +488,16 @@ impl SyntaxAnalyser {
                 self.token_error("Expected operand in `and` expression body");
             }
         };
-        return true;
+        true
     }
     /// exprEq: exprEq ( EQUAL | NOTEQ ) exprRel | exprRel ;
     fn rule_expr_eq(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_rel() {
-            if self.rule_expr_eq1() {
-                return true;
-            }
+        if self.rule_expr_rel() && self.rule_expr_eq1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     /// exprEq1: (( EQUAL | NOTEQ ) exprRel exprEq1)?' ;
     fn rule_expr_eq1(&mut self) -> bool {
@@ -525,19 +512,17 @@ impl SyntaxAnalyser {
                 self.token_error("Expected operand in `equals` expression body");
             }
         }
-        return true;
+        true
     }
 
     /// exprRel: exprRel ( LESS | LESSEQ | GREATER | GREATEREQ ) exprAdd | exprAdd ;
     fn rule_expr_rel(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_add() {
-            if self.rule_expr_rel1() {
-                return true;
-            }
+        if self.rule_expr_add() && self.rule_expr_rel1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     fn rule_expr_rel1(&mut self) -> bool {
@@ -554,18 +539,16 @@ impl SyntaxAnalyser {
                 self.token_error("Expected operand in `relation` expression body");
             }
         }
-        return true;
+        true
     }
     /// exprAdd: exprAdd ( ADD | SUB ) exprMul | exprMul ;
     fn rule_expr_add(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_mul() {
-            if self.rule_expr_add1() {
-                return true;
-            }
+        if self.rule_expr_mul() && self.rule_expr_add1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     fn rule_expr_add1(&mut self) -> bool {
         if self.consume(TokenType::Add.discriminant_value())
@@ -579,18 +562,16 @@ impl SyntaxAnalyser {
                 self.token_error("Expected operand in `addition / subtraction` expression body");
             }
         }
-        return true;
+        true
     }
     /// exprMul: exprMul ( MUL | DIV ) exprCast | exprCast ;
     fn rule_expr_mul(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_cast() {
-            if self.rule_expr_mul1() {
-                return true;
-            }
+        if self.rule_expr_cast() && self.rule_expr_mul1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     fn rule_expr_mul1(&mut self) -> bool {
@@ -605,7 +586,7 @@ impl SyntaxAnalyser {
                 self.token_error("Expected operand in `multiplication / division` expression body");
             }
         }
-        return true;
+        true
     }
     /// exprCast: LPAR typeName RPAR exprCast | exprUnary ;
     /// Examples:
@@ -636,19 +617,16 @@ impl SyntaxAnalyser {
             return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// exprUnary: ( SUB | NOT ) exprUnary | exprPostfix ;
     /// Check if and expression starts with `-` or `!`
     fn rule_expr_unary(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.consume(TokenType::Sub.discriminant_value())
-            || self.consume(TokenType::Not.discriminant_value())
-        {
-            if self.rule_expr_unary() {
-                return true;
-            }
+        if (self.consume(TokenType::Sub.discriminant_value())
+            || self.consume(TokenType::Not.discriminant_value())) && self.rule_expr_unary() {
+            return true;
         }
 
         //self.current_token_idx = start_token_idx;
@@ -656,7 +634,7 @@ impl SyntaxAnalyser {
             return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 
     /// exprPostfix: exprPostfix LBRACKET expr RBRACKET
@@ -664,13 +642,11 @@ impl SyntaxAnalyser {
     /// | exprPrimary ;
     fn rule_expr_postfix(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_primary() {
-            if self.rule_expr_postfix1() {
-                return true;
-            }
+        if self.rule_expr_primary() && self.rule_expr_postfix1() {
+            return true;
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
     fn rule_expr_postfix1(&mut self) -> bool {
         if self.consume(TokenType::Lbracket.discriminant_value()) {
@@ -698,7 +674,7 @@ impl SyntaxAnalyser {
             }
         }
         //self.current_token_idx = start_token_idx;
-        return true;
+        true
     }
 
     /// exprPrimary: ID ( LPAR ( expr ( COMMA expr )* )? RPAR )?
@@ -742,21 +718,15 @@ impl SyntaxAnalyser {
         {
             return true;
         }
-        if self.consume(TokenType::Lpar.discriminant_value()) {
-            if self.rule_expr() {
-                if self.consume(TokenType::Rpar.discriminant_value()) {
-                    return true;
-                } else {
-                    self.token_error("Expected closing `)` after expression");
-                }
+        if self.consume(TokenType::Lpar.discriminant_value()) && self.rule_expr() {
+            if self.consume(TokenType::Rpar.discriminant_value()) {
+                return true;
+            } else {
+                self.token_error("Expected closing `)` after expression");
             }
-            // clashes with cast expression
-            // else {
-            //     self.token_error("Expected expression in primary rule");
-            // }
         }
         self.current_token_idx = start_token_idx;
-        return false;
+        false
     }
 }
 

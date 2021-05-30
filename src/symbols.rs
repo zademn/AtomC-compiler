@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+
 /// Data types enum.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeName {
@@ -65,7 +65,7 @@ pub struct Symbol {
     pub symbol_type: SymbolType, // Tells us the data type and bonus info if it's a struct
     pub depth: usize,            // 0-global, 1-in function, 2... - nested blocks in function
     pub line: usize,
-    pub am: Option<Vec<Symbol>>,
+    pub am: Option<HashMap<String, Symbol>>,
     pub table: usize, // Index in the big table of the parent table
                       //ao: AddrOffset,
 }
@@ -83,7 +83,34 @@ impl Default for Symbol {
         }
     }
 }
-
+impl Symbol {
+    pub fn find_symbol(&self, symbol_name: &str) -> Option<Symbol> {
+        match &self.am {
+            Some(am) => am.get(symbol_name).cloned(),
+            None => None,
+        }
+    }
+    pub fn add_symbol(&mut self, symbol: Symbol) {
+        let symbol = symbol;
+        match self.find_symbol(&symbol.name) {
+            Some(s) => panic!(
+                "Error at line {}: Symbol `{}` is already defined on line {}",
+                symbol.line, s.name, s.line
+            ),
+            None => {
+                //symbol.table = Some(Rc::new(self.clone())); // Make this a pointer?
+                if let Some(am) = &mut self.am {
+                    am.insert(String::from(&symbol.name), symbol);
+                }
+            }
+        }
+    }
+    pub fn update_symbol(&mut self, symbol: Symbol) {
+        if let Some(am) = &mut self.am {
+            am.insert(String::from(&symbol.name), symbol);
+        }
+    }
+}
 #[derive(Debug)]
 pub struct Context {
     pub symbols: HashMap<String, Symbol>,
@@ -108,9 +135,12 @@ impl Context {
         }
     }
     pub fn add_symbol(&mut self, symbol: Symbol) {
-        let mut symbol = symbol;
+        let symbol = symbol;
         match self.find_symbol(&symbol.name) {
-            Some(s) => panic!("Symbol {} is already defined on line {}", s.name, s.line),
+            Some(s) => panic!(
+                "Error at line {}: Symbol `{}` is already defined on line {}",
+                symbol.line, s.name, s.line
+            ),
             None => {
                 //symbol.table = Some(Rc::new(self.clone())); // Make this a pointer?
                 self.symbols.insert(String::from(&symbol.name), symbol);
@@ -120,10 +150,10 @@ impl Context {
     /// Searches for symbol in this table.
     ///  If not found searches in the parent table
     pub fn find_symbol(&self, symbol_name: &str) -> Option<Symbol> {
-        match self.symbols.get(symbol_name) {
-            Some(s) => return Some(s.clone()),
-            None => return None,
-        }
+        self.symbols.get(symbol_name).cloned()
+    }
+    pub fn update_symbol(&mut self, symbol: Symbol) {
+        self.symbols.insert(String::from(&symbol.name), symbol);
     }
     pub fn clear(&mut self) {
         self.symbols.clear();
@@ -135,7 +165,7 @@ pub mod tests {
     use crate::symbols::*;
     #[test]
     fn symbol_add_two() {
-        let mut s1 = Symbol {
+        let s1 = Symbol {
             name: String::from("x"),
             class: ClassType::ClsVar,
             storage: StorageType::MemArg,
@@ -149,12 +179,12 @@ pub mod tests {
             am: None,
             table: 0,
         };
-        let mut s2 = Symbol {
+        let s2 = Symbol {
             name: String::from("y"),
             ..s1.clone()
         };
         let mut st = Context::default();
-        let mut all_tables = vec![&st];
+        let _all_tables = vec![&st];
         st.add_symbol(s1);
         st.add_symbol(s2);
         dbg!(&st);
@@ -163,7 +193,7 @@ pub mod tests {
     #[test]
     #[should_panic]
     fn symbol_add_twice() {
-        let mut s1 = Symbol {
+        let s1 = Symbol {
             name: String::from("x"),
             class: ClassType::ClsVar,
             storage: StorageType::MemArg,
@@ -177,7 +207,7 @@ pub mod tests {
             am: None,
             table: 0,
         };
-        let mut s2 = Symbol {
+        let s2 = Symbol {
             name: String::from("x"),
             ..s1.clone()
         };

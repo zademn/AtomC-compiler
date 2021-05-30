@@ -84,11 +84,11 @@ impl Lexer {
         let mut chars = contents.chars().collect::<Vec<char>>();
         chars.push('\0');
 
-        return Lexer {
+        Lexer {
             text: chars,
             text_idx: 0,
             current_line: 1,
-        };
+        }
     }
     /// Returns a Lexer from the contents of the string given
     /// # Arguments
@@ -97,11 +97,11 @@ impl Lexer {
         let mut chars = content.chars().collect::<Vec<char>>();
         chars.push('\0');
 
-        return Lexer {
+        Lexer {
             text: chars,
             text_idx: 0,
             current_line: 1,
-        };
+        }
     }
 
     /// Returns a vector of `Token`s  
@@ -114,7 +114,7 @@ impl Lexer {
                 _ => continue,
             }
         }
-        return token_vec;
+        token_vec
     }
 }
 
@@ -893,7 +893,7 @@ impl Iterator for Lexer {
                     }
                     '\"' => {
                         return Some(Token {
-                            token_type: TokenType::CtString(token_string.clone()),
+                            token_type: TokenType::CtString(token_string),
                             line: *current_line,
                         });
                     }
@@ -916,7 +916,7 @@ impl Iterator for Lexer {
                     '\\' => state = 26,
                     '\"' => {
                         return Some(Token {
-                            token_type: TokenType::CtString(token_string.clone()),
+                            token_type: TokenType::CtString(token_string),
                             line: *current_line,
                         });
                     }
