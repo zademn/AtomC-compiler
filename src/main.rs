@@ -1,12 +1,14 @@
 mod asdr;
 mod asdr_dom;
+mod asdr_dom_type;
 mod lexer;
 mod symbols;
+mod types;
 use clap::{App, Arg};
 use std::fs;
 
 //use lexer::get_tokens;
-use asdr_dom::SyntaxAnalyser;
+use asdr_dom_type::SyntaxAnalyser;
 use lexer::Lexer;
 
 fn main() -> Result<(), &'static str> {

@@ -421,7 +421,9 @@ impl SyntaxAnalyser {
                 is_decl_func = true;
                 symbol_type.type_base = TypeName::TbVoid;
                 true
-            })) && self.consume(TokenType::Id("".to_string()).discriminant_value()) {
+            }))
+            && self.consume(TokenType::Id("".to_string()).discriminant_value())
+        {
             let token_temp = self.token_vec[self.current_token_idx - 1].clone();
             let _token_name = token_temp.token_type.get_id();
             if self.consume(TokenType::Lpar.discriminant_value()) {
@@ -869,7 +871,9 @@ impl SyntaxAnalyser {
     fn rule_expr_unary(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
         if (self.consume(TokenType::Sub.discriminant_value())
-            || self.consume(TokenType::Not.discriminant_value())) && self.rule_expr_unary() {
+            || self.consume(TokenType::Not.discriminant_value()))
+            && self.rule_expr_unary()
+        {
             return true;
         }
 
