@@ -493,7 +493,7 @@ impl SyntaxAnalyser {
         //     .insert(String::from(&symbol.name), symbol);
         if self.is_function_context {
             if let Some(ref mut cs) = self.current_symbol {
-                cs.add_symbol(symbol.clone());
+                cs.add_symbol(symbol);
                 self.symbol_tables[0].update_symbol(cs.clone());
             }
         }
@@ -597,10 +597,10 @@ impl SyntaxAnalyser {
                     // instructions
                 } // TODO should i reset if this fails?
                 if self.consume(TokenType::Semicolon.discriminant_value()) {
-                    if self.rule_expr(&mut rv2) {
-                        if rv2.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
-                            self.token_error("a structure cannot be logically tested");
-                        }
+                    if self.rule_expr(&mut rv2)
+                        && rv2.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    {
+                        self.token_error("a structure cannot be logically tested");
                     }; // TODO should i reset if this fails?
                     if self.consume(TokenType::Semicolon.discriminant_value()) {
                         if self.rule_expr(&mut rv3) {
