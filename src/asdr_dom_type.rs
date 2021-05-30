@@ -1,6 +1,6 @@
 use crate::lexer::{Token, TokenType};
 use crate::symbols::*;
-use std::collections::HashMap;
+use indexmap::map::IndexMap;
 
 pub struct SyntaxAnalyser {
     pub token_vec: Vec<Token>,
@@ -123,6 +123,7 @@ impl SyntaxAnalyser {
                     am: None,
                     table: self.current_table_idx,
                 };
+
                 if self.is_function_context {
                     if let Some(ref mut cs) = self.current_symbol {
                         cs.add_symbol(symbol.clone());
@@ -156,6 +157,7 @@ impl SyntaxAnalyser {
     /// Checks structure, functions or variables
     fn rule_unit(&mut self) -> bool {
         self.symbol_tables.push(Context::default()); // create global context
+        add_ext_funcs(&mut self.symbol_tables[0]);
         loop {
             let temp_idx = self.current_token_idx;
             if {
@@ -190,7 +192,8 @@ impl SyntaxAnalyser {
         if self.consume(TokenType::Struct.discriminant_value()) {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
                 // Save consumed token
-                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                //let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                let token_temp = self.consumed_token.as_ref().unwrap().clone();
                 if self.consume(TokenType::Lacc.discriminant_value()) {
                     let token_name = token_temp.token_type.get_id();
                     let symbol = Symbol {
@@ -204,7 +207,7 @@ impl SyntaxAnalyser {
                         storage: StorageType::MemGlobal,
                         line: token_temp.line,
                         depth: self.symbol_tables[self.current_table_idx].depth,
-                        am: Some(HashMap::new()),
+                        am: Some(IndexMap::new()),
                         table: 0,
                     };
                     // Add a new context
@@ -344,8 +347,17 @@ impl SyntaxAnalyser {
     /// [23]
     fn rule_array_decl(&mut self, symbol_type: &mut SymbolType) -> bool {
         let start_token_idx = self.current_token_idx;
+        let mut rv = RetVal::default();
         if self.consume(TokenType::Lbracket.discriminant_value()) {
-            if !self.rule_expr() {
+            if self.rule_expr(&mut rv) {
+                if !rv.is_ctval {
+                    self.token_error("the array size is not a constant value")
+                }
+                if rv.symbol_type.unwrap().type_base != TypeName::TbInt {
+                    self.token_error("the array size is not an integer")
+                }
+                symbol_type.num_elements = rv.ctval.unwrap().get_int();
+            } else {
                 symbol_type.num_elements = 0; // arrawy without size
             };
             if self.consume(TokenType::Rbracket.discriminant_value()) {
@@ -380,7 +392,7 @@ impl SyntaxAnalyser {
             storage: StorageType::MemGlobal,
             line: token.line,
             depth: self.symbol_tables[self.current_table_idx].depth,
-            am: Some(HashMap::new()), // Init func arguments
+            am: Some(IndexMap::new()), // Init func arguments
             table: 0,
         };
         // Add a new context
@@ -401,7 +413,7 @@ impl SyntaxAnalyser {
         let start_token_idx = self.current_token_idx;
         let mut symbol_type: SymbolType = SymbolType::default();
 
-        let mut is_decl_func = false;
+        let mut is_decl_func: bool;
         let _ok = false;
         let has_type = {
             if self.rule_type_base(&mut symbol_type) {
@@ -472,13 +484,19 @@ impl SyntaxAnalyser {
         };
         // Add a new context
         self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
-        self.current_symbol
-            .as_mut()
-            .unwrap()
-            .am
-            .as_mut()
-            .unwrap()
-            .insert(String::from(&symbol.name), symbol);
+        // self.current_symbol
+        //     .as_mut()
+        //     .unwrap()
+        //     .am
+        //     .as_mut()
+        //     .unwrap()
+        //     .insert(String::from(&symbol.name), symbol);
+        if self.is_function_context {
+            if let Some(ref mut cs) = self.current_symbol {
+                cs.add_symbol(symbol.clone());
+                self.symbol_tables[0].update_symbol(cs.clone());
+            }
+        }
     }
     /// funcArg: typeBase ID arrayDecl? ;
     fn rule_func_arg(&mut self) -> bool {
@@ -510,6 +528,7 @@ impl SyntaxAnalyser {
     ///
     fn rule_stm(&mut self) -> bool {
         let start_token_idx = self.current_token_idx;
+        let mut rv = RetVal::default();
         if self.rule_stm_compound() {
             return true;
         }
@@ -517,7 +536,10 @@ impl SyntaxAnalyser {
         // If condition
         if self.consume(TokenType::If.discriminant_value()) {
             if self.consume(TokenType::Lpar.discriminant_value()) {
-                if self.rule_expr() {
+                if self.rule_expr(&mut rv) {
+                    if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
+                        self.token_error("a structure cannot be logically tested");
+                    }
                     if self.consume(TokenType::Rpar.discriminant_value()) {
                         if self.rule_stm() {
                             // Optional else
@@ -545,7 +567,10 @@ impl SyntaxAnalyser {
         // While
         if self.consume(TokenType::While.discriminant_value()) {
             if self.consume(TokenType::Lpar.discriminant_value()) {
-                if self.rule_expr() {
+                if self.rule_expr(&mut rv) {
+                    if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
+                        self.token_error("a structure cannot be logically tested");
+                    }
                     if self.consume(TokenType::Rpar.discriminant_value()) {
                         if self.rule_stm() {
                             return true;
@@ -563,13 +588,24 @@ impl SyntaxAnalyser {
             }
         }
         // For
+        let mut rv1 = RetVal::default();
+        let mut rv2 = RetVal::default();
+        let mut rv3 = RetVal::default();
         if self.consume(TokenType::For.discriminant_value()) {
             if self.consume(TokenType::Lpar.discriminant_value()) {
-                self.rule_expr(); // TODO should i reset if this fails?
+                if self.rule_expr(&mut rv1) {
+                    // instructions
+                } // TODO should i reset if this fails?
                 if self.consume(TokenType::Semicolon.discriminant_value()) {
-                    self.rule_expr(); // TODO should i reset if this fails?
+                    if self.rule_expr(&mut rv2) {
+                        if rv2.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
+                            self.token_error("a structure cannot be logically tested");
+                        }
+                    }; // TODO should i reset if this fails?
                     if self.consume(TokenType::Semicolon.discriminant_value()) {
-                        self.rule_expr(); // TODO should i reset if this fails?
+                        if self.rule_expr(&mut rv3) {
+                            // instructions
+                        }; // TODO should i reset if this fails?
                         if self.consume(TokenType::Rpar.discriminant_value()) {
                             if self.rule_stm() {
                                 return true;
@@ -599,14 +635,22 @@ impl SyntaxAnalyser {
         }
 
         if self.consume(TokenType::Return.discriminant_value()) {
-            self.rule_expr();
+            if self.rule_expr(&mut rv) {
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbVoid {
+                    self.token_error("a void function cannot return a value");
+                }
+                self.current_symbol.as_ref().unwrap().symbol_type.cast(
+                    rv.symbol_type.as_ref().unwrap().clone(),
+                    &self.consumed_token.as_ref().unwrap(),
+                );
+            };
             if self.consume(TokenType::Semicolon.discriminant_value()) {
                 return true;
             } else {
                 self.token_error("Expected semicolon `;` at the end of the `return` statement")
             }
         }
-        if self.rule_expr() {
+        if self.rule_expr(&mut rv) {
             if self.consume(TokenType::Semicolon.discriminant_value()) {
                 return true;
             } else {
@@ -659,9 +703,9 @@ impl SyntaxAnalyser {
         false
     }
     /// expr: exprAssign ;
-    fn rule_expr(&mut self) -> bool {
+    fn rule_expr(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_assign() {
+        if self.rule_expr_assign(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
@@ -669,11 +713,26 @@ impl SyntaxAnalyser {
     }
 
     /// exprAssign: exprUnary ASSIGN exprAssign | exprOr ;
-    fn rule_expr_assign(&mut self) -> bool {
+    fn rule_expr_assign(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_unary() {
+        let mut rve = RetVal::default();
+        if self.rule_expr_unary(rv) {
             if self.consume(TokenType::Assign.discriminant_value()) {
-                if self.rule_expr_assign() {
+                if self.rule_expr_assign(&mut rve) {
+                    if !rv.is_lval {
+                        self.token_error("cannot assign to a non-lval");
+                    }
+                    if rv.symbol_type.as_ref().unwrap().num_elements > -1
+                        || rve.symbol_type.as_ref().unwrap().num_elements > -1
+                    {
+                        self.token_error("The arrays cannot be assigned");
+                    }
+                    rv.symbol_type.as_ref().unwrap().cast(
+                        rve.symbol_type.unwrap(),
+                        &self.token_vec[self.current_token_idx],
+                    );
+                    rv.is_ctval = false;
+                    rv.is_lval = false;
                     return true;
                 } else {
                     self.token_error("Missing right operand after `=` in assign operation")
@@ -684,16 +743,16 @@ impl SyntaxAnalyser {
 
         // Reset before or variable
         //self.current_token_idx = start_token_idx;
-        if self.rule_expr_or() {
+        if self.rule_expr_or(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
     /// exprOr: exprOr OR exprAnd | exprAnd ;
-    fn rule_expr_or(&mut self) -> bool {
+    fn rule_expr_or(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_and() && self.rule_expr_or1() {
+        if self.rule_expr_and(rv) && self.rule_expr_or1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
@@ -701,11 +760,20 @@ impl SyntaxAnalyser {
     }
 
     /// exprOr1: (OR exprAnd exprOr1)?
-    fn rule_expr_or1(&mut self) -> bool {
+    fn rule_expr_or1(&mut self, rv: &mut RetVal) -> bool {
         //let start_token_idx = self.current_token_idx;
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Or.discriminant_value()) {
-            if self.rule_expr_and() {
-                if self.rule_expr_or1() {
+            if self.rule_expr_and(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be loically tested");
+                }
+                rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_or1(rv) {
                     return true;
                 }
             } else {
@@ -717,19 +785,28 @@ impl SyntaxAnalyser {
     }
 
     /// exprAnd: exprAnd AND exprEq | exprEq ;
-    fn rule_expr_and(&mut self) -> bool {
+    fn rule_expr_and(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_eq() && self.rule_expr_and1() {
+        if self.rule_expr_eq(rv) && self.rule_expr_and1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
     /// exprAnd1:  (AND exprEq | exprAnd1)? ;
-    fn rule_expr_and1(&mut self) -> bool {
+    fn rule_expr_and1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::And.discriminant_value()) {
-            if self.rule_expr_eq() {
-                if self.rule_expr_and1() {}
+            if self.rule_expr_eq(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be loically tested");
+                }
+                rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_and1(rv) {}
             } else {
                 self.token_error("Expected operand in `and` expression body");
             }
@@ -737,21 +814,31 @@ impl SyntaxAnalyser {
         true
     }
     /// exprEq: exprEq ( EQUAL | NOTEQ ) exprRel | exprRel ;
-    fn rule_expr_eq(&mut self) -> bool {
+    fn rule_expr_eq(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_rel() && self.rule_expr_eq1() {
+        if self.rule_expr_rel(rv) && self.rule_expr_eq1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
     /// exprEq1: (( EQUAL | NOTEQ ) exprRel exprEq1)?' ;
-    fn rule_expr_eq1(&mut self) -> bool {
+    fn rule_expr_eq1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Equal.discriminant_value())
             || self.consume(TokenType::NotEq.discriminant_value())
         {
-            if self.rule_expr_rel() {
-                if self.rule_expr_eq1() {
+            //let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+            if self.rule_expr_rel(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be compared");
+                }
+                rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_eq1(rv) {
                     return true;
                 }
             } else {
@@ -762,23 +849,37 @@ impl SyntaxAnalyser {
     }
 
     /// exprRel: exprRel ( LESS | LESSEQ | GREATER | GREATEREQ ) exprAdd | exprAdd ;
-    fn rule_expr_rel(&mut self) -> bool {
+    fn rule_expr_rel(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_add() && self.rule_expr_rel1() {
+        if self.rule_expr_add(rv) && self.rule_expr_rel1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
 
-    fn rule_expr_rel1(&mut self) -> bool {
+    fn rule_expr_rel1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Less.discriminant_value())
             || self.consume(TokenType::LessEq.discriminant_value())
             || self.consume(TokenType::Greater.discriminant_value())
             || self.consume(TokenType::GreaterEq.discriminant_value())
         {
-            if self.rule_expr_add() {
-                if self.rule_expr_rel1() {
+            if self.rule_expr_add(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().num_elements > -1
+                    || rve.symbol_type.as_ref().unwrap().num_elements > -1
+                {
+                    self.token_error("An array cannot be compared");
+                }
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be compared");
+                }
+                rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_rel1(rv) {
                     return true;
                 }
             } else {
@@ -788,20 +889,39 @@ impl SyntaxAnalyser {
         true
     }
     /// exprAdd: exprAdd ( ADD | SUB ) exprMul | exprMul ;
-    fn rule_expr_add(&mut self) -> bool {
+    fn rule_expr_add(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_mul() && self.rule_expr_add1() {
+        if self.rule_expr_mul(rv) && self.rule_expr_add1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
-    fn rule_expr_add1(&mut self) -> bool {
+    fn rule_expr_add1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Add.discriminant_value())
             || self.consume(TokenType::Sub.discriminant_value())
         {
-            if self.rule_expr_mul() {
-                if self.rule_expr_add1() {
+            if self.rule_expr_mul(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().num_elements > -1
+                    || rve.symbol_type.as_ref().unwrap().num_elements > -1
+                {
+                    self.token_error("An array cannot be added / subtracted");
+                }
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be added / subtracted");
+                }
+                rv.symbol_type = rv
+                    .symbol_type
+                    .as_ref()
+                    .unwrap()
+                    .clone()
+                    .get_arith_type(rve.symbol_type.unwrap());
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_add1(rv) {
                     return true;
                 }
             } else {
@@ -811,21 +931,40 @@ impl SyntaxAnalyser {
         true
     }
     /// exprMul: exprMul ( MUL | DIV ) exprCast | exprCast ;
-    fn rule_expr_mul(&mut self) -> bool {
+    fn rule_expr_mul(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_cast() && self.rule_expr_mul1() {
+        if self.rule_expr_cast(rv) && self.rule_expr_mul1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
 
-    fn rule_expr_mul1(&mut self) -> bool {
+    fn rule_expr_mul1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Mul.discriminant_value())
             || self.consume(TokenType::Div.discriminant_value())
         {
-            if self.rule_expr_cast() {
-                if self.rule_expr_mul1() {
+            if self.rule_expr_cast(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().num_elements > -1
+                    || rve.symbol_type.as_ref().unwrap().num_elements > -1
+                {
+                    self.token_error("An array cannot be multiplied / divided");
+                }
+                if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                    || rve.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct
+                {
+                    self.token_error("A structure cannot be multiplied / divided");
+                }
+                rv.symbol_type = rv
+                    .symbol_type
+                    .as_ref()
+                    .unwrap()
+                    .clone()
+                    .get_arith_type(rve.symbol_type.unwrap());
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                if self.rule_expr_mul1(rv) {
                     return true;
                 }
             } else {
@@ -838,13 +977,23 @@ impl SyntaxAnalyser {
     /// Examples:
     /// (int)x;
     /// (int)(double)x;
-    fn rule_expr_cast(&mut self) -> bool {
+    fn rule_expr_cast(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
         let mut symbol_type = SymbolType::default();
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Lpar.discriminant_value()) {
             if self.rule_type_name(&mut symbol_type) {
                 if self.consume(TokenType::Rpar.discriminant_value()) {
-                    if self.rule_expr_cast() {
+                    if self.rule_expr_cast(&mut rve) {
+                        dbg!(&symbol_type);
+                        dbg!(&rve.symbol_type);
+                        symbol_type.cast(
+                            rve.symbol_type.unwrap(),
+                            &self.token_vec[self.current_token_idx - 1],
+                        );
+                        rv.symbol_type = Some(symbol_type);
+                        rv.is_ctval = false;
+                        rv.is_lval = false;
                         return true;
                     } else {
                         self.token_error("Invalid `cast` expression")
@@ -859,7 +1008,7 @@ impl SyntaxAnalyser {
         }
         // TODO should i reset here?
         self.current_token_idx = start_token_idx;
-        if self.rule_expr_unary() {
+        if self.rule_expr_unary(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
@@ -868,17 +1017,38 @@ impl SyntaxAnalyser {
 
     /// exprUnary: ( SUB | NOT ) exprUnary | exprPostfix ;
     /// Check if and expression starts with `-` or `!`
-    fn rule_expr_unary(&mut self) -> bool {
+    fn rule_expr_unary(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if (self.consume(TokenType::Sub.discriminant_value())
-            || self.consume(TokenType::Not.discriminant_value()))
-            && self.rule_expr_unary()
+        if self.consume(TokenType::Sub.discriminant_value())
+            || self.consume(TokenType::Not.discriminant_value())
         {
-            return true;
+            let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+            if self.rule_expr_unary(rv) {
+                match token_temp.token_type {
+                    TokenType::Sub => {
+                        if rv.symbol_type.as_ref().unwrap().num_elements > -1 {
+                            self.token_error("unary `-` cannot be applied to arrays")
+                        }
+                        if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
+                            self.token_error("unary `-` cannot be applied to structures")
+                        }
+                    }
+                    TokenType::Not => {
+                        if rv.symbol_type.as_ref().unwrap().type_base == TypeName::TbStruct {
+                            self.token_error("unary `!` cannot be applied to structures")
+                        }
+                    }
+                    _ => {}
+                }
+                rv.is_ctval = false;
+                rv.is_lval = false;
+                return true;
+            } else {
+                self.token_error("Invalid unary expression");
+            }
         }
-
         //self.current_token_idx = start_token_idx;
-        if self.rule_expr_postfix() {
+        if self.rule_expr_postfix(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
@@ -888,19 +1058,41 @@ impl SyntaxAnalyser {
     /// exprPostfix: exprPostfix LBRACKET expr RBRACKET
     /// | exprPostfix DOT ID
     /// | exprPrimary ;
-    fn rule_expr_postfix(&mut self) -> bool {
+    fn rule_expr_postfix(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
-        if self.rule_expr_primary() && self.rule_expr_postfix1() {
+        if self.rule_expr_primary(rv) && self.rule_expr_postfix1(rv) {
             return true;
         }
         self.current_token_idx = start_token_idx;
         false
     }
-    fn rule_expr_postfix1(&mut self) -> bool {
+    fn rule_expr_postfix1(&mut self, rv: &mut RetVal) -> bool {
+        let mut rve = RetVal::default();
         if self.consume(TokenType::Lbracket.discriminant_value()) {
-            if self.rule_expr() {
+            if self.rule_expr(&mut rve) {
+                if rv.symbol_type.as_ref().unwrap().num_elements < 0 {
+                    self.token_error("Only an array can be indexed");
+                }
+                let type_int = SymbolType::new(TypeName::TbInt, -1);
+                type_int.cast(
+                    rve.symbol_type.unwrap(),
+                    &self.token_vec[self.current_token_idx],
+                );
+                // rv.symbol_type = Some(SymbolType::new(
+                //     rv.symbol_type.as_ref().unwrap().type_base.clone(),
+                //     -1,
+                // ));
+                //rv.symbol_type = rv.symbol_type.clone(); // shoulb be rve here?
+
+                rv.symbol_type = Some(SymbolType {
+                    num_elements: -1,
+                    ..rv.symbol_type.as_ref().unwrap().clone()
+                });
+                rv.is_lval = true;
+                rv.is_ctval = false;
+
                 if self.consume(TokenType::Rbracket.discriminant_value()) {
-                    if self.rule_expr_postfix1() {
+                    if self.rule_expr_postfix1(rv) {
                         return true;
                     }
                 } else {
@@ -914,22 +1106,30 @@ impl SyntaxAnalyser {
         //self.current_token_idx = start_token_idx;
         if self.consume(TokenType::Dot.discriminant_value()) {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-                // let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-                // let token_name = token_temp.token_type.get_id();
-                // dbg!(&self.current_dot_struct);
-                // match &self.current_dot_struct {
-                //     Some(s) => match s.find_symbol(&token_name) {
-                //         Some(f) => {}
-                //         None => self.token_error(&format!(
-                //             "Undefined field `{}` in struct `{}`",
-                //             token_name, s.name
-                //         )),
-                //     },
-                //     None => {
-                //         self.token_error(&format!("Undefined symbol: `{}`", token_name));
-                //     }
-                // }
-                if self.rule_expr_postfix1() {
+                let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+                let token_name = token_temp.token_type.get_id();
+                let s_struct = rv.symbol_type.as_ref().unwrap();
+                if s_struct.struct_symbol.is_none() {
+                    self.token_error(&format!("`{}`'s parent is not a struct", token_name));
+                }
+                let s_struct = s_struct.struct_symbol.as_ref().unwrap();
+                //let s_struct: Symbol = (*rv.symbol_type.as_ref().unwrap().struct_symbol).unwrap();
+                let s_member = s_struct.find_symbol(&token_name);
+                match s_member {
+                    Some(s) => {
+                        rv.symbol_type = Some(s.symbol_type);
+                        rv.is_lval = true;
+                        rv.is_ctval = false;
+                    }
+                    None => {
+                        self.token_error(&format!(
+                            "struct {} does not have the member {}",
+                            s_struct.name, token_name
+                        ));
+                    }
+                }
+
+                if self.rule_expr_postfix1(rv) {
                     return true;
                 }
             } else {
@@ -946,48 +1146,91 @@ impl SyntaxAnalyser {
     /// | CT_CHAR
     /// | CT_STRING
     /// | LPAR expr RPAR ;
-    fn rule_expr_primary(&mut self) -> bool {
+    fn rule_expr_primary(&mut self, rv: &mut RetVal) -> bool {
         let start_token_idx = self.current_token_idx;
+        let mut is_func = false;
         if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
-            // let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-            // let token_name = token_temp.token_type.get_id();
-            // match self.find_symbol_everywhere(&token_name) {
-            //     Some(
-            //         s
-            //         @
-            //         Symbol {
-            //             class: ClassType::ClsStruct,
-            //             ..
-            //         },
-            //     ) => {
-            //         //dbg!(&self.current_dot_struct);
-            //         self.current_dot_struct = Some(s)
-            //     }
-            //     Some(s) => {
-            //         //dbg!(&s);
-            //     }
-            //     None => {
-            //         self.token_error(&format!("Undefined symbol: `{}`", token_name));
-            //     }
-            // }
+            let token_temp = self.token_vec[self.current_token_idx - 1].clone();
+            let token_name = token_temp.token_type.get_id();
+            let mut arg = RetVal::default();
+            let ss = self.find_symbol_everywhere(&token_name);
+            match &ss {
+                Some(s) => {
+                    rv.symbol_type = Some(s.symbol_type.clone());
+                    rv.is_ctval = false;
+                    rv.is_lval = true;
+                    if s.class == ClassType::ClsFunc || s.class == ClassType::ClsExtFunc {
+                        rv.is_lval = false;
+                        is_func = true;
+                    }
+                }
+                None => self.token_error(&format!("undefined symbol: `{}`", token_name)),
+            }
+            let s = ss.unwrap();
             // Optional
             if self.consume(TokenType::Lpar.discriminant_value()) {
-                if self.rule_expr() {
-                    loop {
-                        if self.consume(TokenType::Comma.discriminant_value()) {
-                            if self.rule_expr() {
-                            } else {
-                                self.token_error(
-                                    "expected `expression` after `comma` in primary rule",
-                                );
-                            }
-                        } else {
-                            break;
-                        }
+                if s.class != ClassType::ClsFunc && s.class != ClassType::ClsExtFunc {
+                    self.token_error(&format!("`{}` is not a function", token_name))
+                }
+                let mut num_args = 0;
+                let defined_args =
+                    s.am.as_ref()
+                        .unwrap()
+                        .values()
+                        .cloned()
+                        .collect::<Vec<Symbol>>();
+                if self.rule_expr(&mut arg) {
+                    // this passes if we have 1 arg => we use `>=`
+                    if num_args >= defined_args.len() {
+                        self.token_error(&format!(
+                            "Too many arguments in function `{}` call",
+                            token_name
+                        ));
                     }
-                } // no else because it's optional
+                    defined_args[num_args].symbol_type.cast(
+                        arg.symbol_type.as_ref().unwrap().clone(),
+                        &self.token_vec[self.current_token_idx],
+                    );
+                    num_args += 1;
+                }
+                loop {
+                    if self.consume(TokenType::Comma.discriminant_value()) {
+                        if self.rule_expr(&mut arg) {
+                            if num_args >= defined_args.len() {
+                                self.token_error(&format!(
+                                    "Too many arguments in function `{}` call",
+                                    token_name
+                                ));
+                            }
+                            defined_args[num_args].symbol_type.cast(
+                                arg.symbol_type.as_ref().unwrap().clone(),
+                                &self.token_vec[self.current_token_idx],
+                            );
+                            num_args += 1;
+                        } else {
+                            self.token_error("expected `expression` after `comma` in primary rule");
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                // no else because it's optional
                 if self.consume(TokenType::Rpar.discriminant_value()) {
+                    if num_args < defined_args.len() {
+                        self.token_error(&format!(
+                            "Too few arguments in function `{}` call",
+                            token_name
+                        ));
+                    }
+                    rv.symbol_type = Some(s.symbol_type);
+                    rv.is_ctval = false;
+                    rv.is_lval = false;
                 } else {
+                    dbg!(&self.token_vec[self.current_token_idx]);
+                    dbg!(&s);
+                    if s.class == ClassType::ClsFunc || s.class == ClassType::ClsExtFunc {
+                        self.token_error(&format!("Missing call for function `{}`", s.name));
+                    }
                     self.token_error("Expected closing `)` after expression body");
                 }
             }
@@ -995,14 +1238,50 @@ impl SyntaxAnalyser {
         }
 
         //self.current_token_idx = start_token_idx;
-        if self.consume(TokenType::CtInt(0).discriminant_value())
-            || self.consume(TokenType::CtReal(0.).discriminant_value())
-            || self.consume(TokenType::CtChar('a').discriminant_value())
-            || self.consume(TokenType::CtString("".to_string()).discriminant_value())
-        {
+        if self.consume(TokenType::CtInt(0).discriminant_value()) {
+            let i = self.token_vec[self.current_token_idx - 1]
+                .token_type
+                .get_int();
+            rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
+            rv.ctval = Some(CtVal::IntChar(i));
+            rv.is_ctval = true;
+            rv.is_lval = false;
             return true;
         }
-        if self.consume(TokenType::Lpar.discriminant_value()) && self.rule_expr() {
+        if self.consume(TokenType::CtChar('a').discriminant_value()) {
+            let i = self.token_vec[self.current_token_idx - 1]
+                .token_type
+                .get_char();
+            rv.symbol_type = Some(SymbolType::new(TypeName::TbChar, -1));
+            rv.ctval = Some(CtVal::IntChar(i as isize));
+            rv.is_ctval = true;
+            rv.is_lval = false;
+            return true;
+        }
+        if self.consume(TokenType::CtReal(0.).discriminant_value()) {
+            let i = self.token_vec[self.current_token_idx - 1]
+                .token_type
+                .get_double();
+            rv.symbol_type = Some(SymbolType::new(TypeName::TbDouble, -1));
+            rv.ctval = Some(CtVal::Double(i));
+            rv.is_ctval = true;
+            rv.is_lval = false;
+            return true;
+        }
+        if self.consume(TokenType::CtString("".to_string()).discriminant_value()) {
+            let i = self
+                .consumed_token
+                .as_ref()
+                .unwrap()
+                .token_type
+                .get_string();
+            rv.symbol_type = Some(SymbolType::new(TypeName::TbChar, 0));
+            rv.ctval = Some(CtVal::String(i));
+            rv.is_ctval = true;
+            rv.is_lval = false;
+            return true;
+        }
+        if self.consume(TokenType::Lpar.discriminant_value()) && self.rule_expr(rv) {
             if self.consume(TokenType::Rpar.discriminant_value()) {
                 return true;
             } else {

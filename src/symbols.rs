@@ -1,5 +1,6 @@
 use crate::lexer::Token;
-use std::collections::HashMap;
+use indexmap::map::IndexMap;
+
 /// Data types enum.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeName {
@@ -30,6 +31,49 @@ pub enum StorageType {
     MemDeclaration,
     MemBuiltin,
 }
+#[derive(Clone, Debug, PartialEq)]
+pub enum CtVal {
+    IntChar(isize),
+    Double(f32),
+    String(String),
+}
+impl CtVal {
+    pub fn get_int(&self) -> isize {
+        if let CtVal::IntChar(i) = self {
+            return *i;
+        }
+        0
+    }
+    pub fn get_double(&self) -> f32 {
+        if let CtVal::Double(d) = self {
+            return *d;
+        }
+        0.
+    }
+    pub fn get_string(&self) -> String {
+        if let CtVal::String(s) = self {
+            return String::from(s);
+        }
+        String::from("")
+    }
+}
+#[derive(Clone, Debug)]
+pub struct RetVal {
+    pub symbol_type: Option<SymbolType>,
+    pub is_lval: bool,
+    pub is_ctval: bool,
+    pub ctval: Option<CtVal>,
+}
+impl Default for RetVal {
+    fn default() -> Self {
+        Self {
+            symbol_type: None,
+            is_lval: false,
+            is_ctval: false,
+            ctval: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SymbolType {
@@ -50,30 +94,28 @@ impl Default for SymbolType {
 impl SymbolType {
     pub fn new(type_base: TypeName, num_elements: isize) -> Self {
         Self {
-            type_base: type_base,
+            type_base,
             struct_symbol: None,
-            num_elements: num_elements,
+            num_elements,
         }
     }
-    pub fn cast(&self, dst: SymbolType, token: Token) {
+    pub fn cast(&self, dst: SymbolType, token: &Token) {
         if self.num_elements > -1 {
             if dst.num_elements > -1 {
                 if self.type_base != dst.type_base {
-                    panic!(format!("Error at line {}: An array cannot be converted to an array of another type", token.line));
-                } else {
-                    panic!(format!(
-                        "Error at line {}: An array cannot be converted to a non-array",
-                        token.line
-                    ));
+                    panic!("Error at line {}: An array cannot be converted to an array of another type", token.line);
                 }
+            } else {
+                panic!(
+                    "Error at line {}: An array cannot be converted to a non-array",
+                    token.line
+                );
             }
-        } else {
-            if dst.num_elements > -1 {
-                panic!(format!(
-                    "Error at line {}: A non-array cannot be converted to an array",
-                    &token.line
-                ));
-            }
+        } else if dst.num_elements > -1 {
+            panic!(
+                "Error at line {}: A non-array cannot be converted to an array",
+                token.line
+            );
         }
         match self.type_base {
             TypeName::TbChar | TypeName::TbInt | TypeName::TbDouble => match dst.type_base {
@@ -90,85 +132,33 @@ impl SymbolType {
                             token.line
                         );
                     }
+                    return;
                 }
             }
-            _ => {
-                panic!(format!("Error at line {}: Incompatible types", &token.line));
-            }
+            _ => {}
         }
+        panic!("Error at line {}: Incompatible types", &token.line);
     }
     pub fn get_arith_type(self, t: SymbolType) -> Option<SymbolType> {
         match t.type_base {
             TypeName::TbChar => match t.type_base {
-                TypeName::TbChar | TypeName::TbDouble | TypeName::TbInt => return Some(t),
-                _ => return None,
+                TypeName::TbChar | TypeName::TbDouble | TypeName::TbInt => Some(t),
+                _ => None,
             },
             TypeName::TbInt => match t.type_base {
-                TypeName::TbChar => return Some(self),
-                TypeName::TbDouble | TypeName::TbInt => return Some(t),
-                _ => return None,
+                TypeName::TbChar => Some(self),
+                TypeName::TbDouble | TypeName::TbInt => Some(t),
+                _ => None,
             },
             TypeName::TbDouble => match t.type_base {
-                TypeName::TbChar | TypeName::TbDouble | TypeName::TbInt => return Some(self),
-                _ => return None,
+                TypeName::TbChar | TypeName::TbDouble | TypeName::TbInt => Some(self),
+                _ => None,
             },
-            _ => return None,
+            _ => None,
         }
     }
 }
-pub fn add_ext_func(name: &str, symbol_type: SymbolType, context: &mut Context) -> Symbol {
-    let s = Symbol {
-        name: String::from(name),
-        symbol_type: symbol_type.clone(),
-        am: Some(HashMap::new()),
-        class: ClassType::ClsExtFunc,
-        storage: StorageType::MemBuiltin,
-        depth: 0,
-        line: 0,
-        table: 0,
-    };
-    context.add_symbol(s.clone());
-    return s;
-}
-pub fn add_func_arg(func: &mut Symbol, name: &str, symbol_type: SymbolType) -> Symbol {
-    let s = Symbol {
-        name: String::from(name),
-        symbol_type: symbol_type.clone(),
-        am: None,
-        class: ClassType::ClsVar,
-        storage: StorageType::MemLocal, // MemArg?
-        depth: 0,
-        line: 0,
-        table: 0,
-    };
-    func.add_symbol(s.clone());
-    return s;
-}
 
-pub fn add_ext_funcs(context: &mut Context) {
-    let mut s: Symbol = add_ext_func("put_s", SymbolType::new(TypeName::TbVoid, -1), context);
-    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
-
-    let mut s: Symbol = add_ext_func("get_s", SymbolType::new(TypeName::TbVoid, -1), context);
-    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
-
-    let mut s: Symbol = add_ext_func("put_i", SymbolType::new(TypeName::TbVoid, -1), context);
-    add_func_arg(&mut s, "i", SymbolType::new(TypeName::TbInt, -1));
-
-    let mut s: Symbol = add_ext_func("get_i", SymbolType::new(TypeName::TbInt, -1), context);
-
-    let mut s: Symbol = add_ext_func("put_d", SymbolType::new(TypeName::TbVoid, -1), context);
-    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbDouble, -1));
-
-    let mut s: Symbol = add_ext_func("get_d", SymbolType::new(TypeName::TbDouble, -1), context);
-
-    let mut s: Symbol = add_ext_func("put_c", SymbolType::new(TypeName::TbVoid, -1), context);
-    add_func_arg(&mut s, "c", SymbolType::new(TypeName::TbChar, -1));
-
-    let mut s: Symbol = add_ext_func("get_c", SymbolType::new(TypeName::TbChar, -1), context);
-
-    let mut s: Symbol = add_ext_func("seconds", SymbolType::new(TypeName::TbDouble, -1), context);
-}
 #[derive(Clone, Debug)]
 pub enum ArgsMembers {
     Args(Vec<Symbol>),    // used for functions
@@ -188,7 +178,7 @@ pub struct Symbol {
     pub symbol_type: SymbolType, // Tells us the data type and bonus info if it's a struct
     pub depth: usize,            // 0-global, 1-in function, 2... - nested blocks in function
     pub line: usize,
-    pub am: Option<HashMap<String, Symbol>>,
+    pub am: Option<IndexMap<String, Symbol>>,
     pub table: usize, // Index in the big table of the parent table
                       //ao: AddrOffset,
 }
@@ -236,14 +226,14 @@ impl Symbol {
 }
 #[derive(Debug)]
 pub struct Context {
-    pub symbols: HashMap<String, Symbol>,
+    pub symbols: IndexMap<String, Symbol>,
     pub storage: StorageType,
     pub depth: usize,
 }
 impl Default for Context {
     fn default() -> Self {
         Self {
-            symbols: HashMap::new(),
+            symbols: IndexMap::new(),
             storage: StorageType::MemGlobal,
             depth: 0,
         }
@@ -252,7 +242,7 @@ impl Default for Context {
 impl Context {
     pub fn new(s: StorageType, d: usize) -> Self {
         Self {
-            symbols: HashMap::new(),
+            symbols: IndexMap::new(),
             storage: s,
             depth: d,
         }
@@ -281,6 +271,69 @@ impl Context {
     pub fn clear(&mut self) {
         self.symbols.clear();
     }
+}
+
+pub fn add_ext_func(name: &str, symbol_type: SymbolType, context: &mut Context) -> Symbol {
+    let s = Symbol {
+        name: String::from(name),
+        symbol_type,
+        am: Some(IndexMap::new()),
+        class: ClassType::ClsExtFunc,
+        storage: StorageType::MemBuiltin,
+        depth: 0,
+        line: 0,
+        table: 0,
+    };
+    context.add_symbol(s.clone());
+    s
+}
+pub fn add_func_arg(func: &mut Symbol, name: &str, symbol_type: SymbolType) -> Symbol {
+    let s = Symbol {
+        name: String::from(name),
+        symbol_type,
+        am: None,
+        class: ClassType::ClsVar,
+        storage: StorageType::MemLocal, // MemArg?
+        depth: 0,
+        line: 0,
+        table: 0,
+    };
+    func.add_symbol(s.clone());
+    s
+}
+
+pub fn add_ext_funcs(context: &mut Context) {
+    let mut s: Symbol = add_ext_func("put_s", SymbolType::new(TypeName::TbVoid, -1), context);
+    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
+    context.update_symbol(s);
+
+    let mut s: Symbol = add_ext_func("get_s", SymbolType::new(TypeName::TbVoid, -1), context);
+    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
+    context.update_symbol(s);
+
+    let mut s: Symbol = add_ext_func("put_i", SymbolType::new(TypeName::TbVoid, -1), context);
+    add_func_arg(&mut s, "i", SymbolType::new(TypeName::TbInt, -1));
+    context.update_symbol(s);
+
+    let _s: Symbol = add_ext_func("get_i", SymbolType::new(TypeName::TbInt, -1), context);
+    context.update_symbol(_s);
+
+    let mut s: Symbol = add_ext_func("put_d", SymbolType::new(TypeName::TbVoid, -1), context);
+    add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbDouble, -1));
+    context.update_symbol(s);
+
+    let _s: Symbol = add_ext_func("get_d", SymbolType::new(TypeName::TbDouble, -1), context);
+    context.update_symbol(_s);
+
+    let mut s: Symbol = add_ext_func("put_c", SymbolType::new(TypeName::TbVoid, -1), context);
+    add_func_arg(&mut s, "c", SymbolType::new(TypeName::TbChar, -1));
+    context.update_symbol(s);
+
+    let _s: Symbol = add_ext_func("get_c", SymbolType::new(TypeName::TbChar, -1), context);
+    context.update_symbol(_s);
+
+    let _s: Symbol = add_ext_func("seconds", SymbolType::new(TypeName::TbDouble, -1), context);
+    context.update_symbol(_s);
 }
 
 #[cfg(test)]

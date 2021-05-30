@@ -55,6 +55,31 @@ impl TokenType {
         }
         String::from("")
     }
+    pub fn get_char(&self) -> char {
+        if let TokenType::CtChar(s) = self {
+            return *s;
+        }
+        0 as char
+    }
+    pub fn get_int(&self) -> isize {
+        if let TokenType::CtInt(s) = self {
+            return *s;
+        }
+        0
+    }
+    pub fn get_double(&self) -> f32 {
+        if let TokenType::CtReal(s) = self {
+            return *s;
+        }
+        0.
+    }
+    pub fn get_string(&self) -> String {
+        if let TokenType::CtString(s) = self {
+            return s.to_string();
+        }
+        String::from("")
+    }
+
     pub fn discriminant_value(&self) -> u8 {
         // Safety: https://rust-lang.github.io/rfcs/2363-arbitrary-enum-discriminant.html
         unsafe { *(self as *const Self as *const u8) }

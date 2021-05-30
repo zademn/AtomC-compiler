@@ -1,6 +1,6 @@
 use crate::lexer::{Token, TokenType};
 use crate::symbols::*;
-use std::collections::HashMap;
+use indexmap::map::IndexMap;
 
 pub struct SyntaxAnalyser {
     pub token_vec: Vec<Token>,
@@ -204,7 +204,7 @@ impl SyntaxAnalyser {
                         storage: StorageType::MemGlobal,
                         line: token_temp.line,
                         depth: self.symbol_tables[self.current_table_idx].depth,
-                        am: Some(HashMap::new()),
+                        am: Some(IndexMap::new()),
                         table: 0,
                     };
                     // Add a new context
@@ -380,7 +380,7 @@ impl SyntaxAnalyser {
             storage: StorageType::MemGlobal,
             line: token.line,
             depth: self.symbol_tables[self.current_table_idx].depth,
-            am: Some(HashMap::new()), // Init func arguments
+            am: Some(IndexMap::new()), // Init func arguments
             table: 0,
         };
         // Add a new context
