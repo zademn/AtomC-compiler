@@ -164,9 +164,26 @@ pub enum ArgsMembers {
     Args(Vec<Symbol>),    // used for functions
     Members(Vec<Symbol>), // used for structs
 }
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
 pub enum AddrOffset {
-    Addr(()),      // vm: memory for global symbols
-    Offset(isize), // vm: stack offset for local symbols
+    Addr(*const ()),
+    Offset(isize),
+}
+impl AddrOffset {
+    pub fn get_addr(&self) -> *const () {
+        if let AddrOffset::Addr(addr) = self {
+            return *addr;
+        }
+        std::ptr::null()
+    }
+    pub fn get_offset(&self) -> isize {
+        if let AddrOffset::Offset(o) = self {
+            return *o;
+        }
+        0
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -180,7 +197,8 @@ pub struct Symbol {
     pub line: usize,
     pub am: Option<IndexMap<String, Symbol>>,
     pub table: usize, // Index in the big table of the parent table
-                      //ao: AddrOffset,
+    //ao: AddrOffset,
+    pub ao: AddrOffset,
 }
 impl Default for Symbol {
     fn default() -> Self {
@@ -193,6 +211,7 @@ impl Default for Symbol {
             line: 0,
             am: None,
             table: 0,
+            ao: AddrOffset::Offset(0),
         }
     }
 }
@@ -273,16 +292,21 @@ impl Context {
     }
 }
 
-pub fn add_ext_func(name: &str, symbol_type: SymbolType, context: &mut Context) -> Symbol {
+pub fn add_ext_func(
+    name: &str,
+    symbol_type: SymbolType,
+    context: &mut Context,
+    addr: *const (),
+) -> Symbol {
     let s = Symbol {
         name: String::from(name),
         symbol_type,
         am: Some(IndexMap::new()),
         class: ClassType::ClsExtFunc,
         storage: StorageType::MemBuiltin,
-        depth: 0,
-        line: 0,
-        table: 0,
+        ao: AddrOffset::Addr(addr),
+
+        ..Default::default()
     };
     context.add_symbol(s.clone());
     s
@@ -291,51 +315,120 @@ pub fn add_func_arg(func: &mut Symbol, name: &str, symbol_type: SymbolType) -> S
     let s = Symbol {
         name: String::from(name),
         symbol_type,
-        am: None,
         class: ClassType::ClsVar,
         storage: StorageType::MemLocal, // MemArg?
-        depth: 0,
-        line: 0,
-        table: 0,
+        ..Default::default()
     };
     func.add_symbol(s.clone());
     s
 }
 
 pub fn add_ext_funcs(context: &mut Context) {
-    let mut s: Symbol = add_ext_func("put_s", SymbolType::new(TypeName::TbVoid, -1), context);
+    let mut s: Symbol = add_ext_func(
+        "put_s",
+        SymbolType::new(TypeName::TbVoid, -1),
+        context,
+        put_s as *const (),
+    );
     add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
     context.update_symbol(s);
 
-    let mut s: Symbol = add_ext_func("get_s", SymbolType::new(TypeName::TbVoid, -1), context);
+    let mut s: Symbol = add_ext_func(
+        "get_s",
+        SymbolType::new(TypeName::TbVoid, -1),
+        context,
+        get_s as *const (),
+    );
     add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbChar, 0));
     context.update_symbol(s);
 
-    let mut s: Symbol = add_ext_func("put_i", SymbolType::new(TypeName::TbVoid, -1), context);
+    let mut s: Symbol = add_ext_func(
+        "put_i",
+        SymbolType::new(TypeName::TbVoid, -1),
+        context,
+        put_i as *const (),
+    );
     add_func_arg(&mut s, "i", SymbolType::new(TypeName::TbInt, -1));
     context.update_symbol(s);
 
-    let _s: Symbol = add_ext_func("get_i", SymbolType::new(TypeName::TbInt, -1), context);
+    let _s: Symbol = add_ext_func(
+        "get_i",
+        SymbolType::new(TypeName::TbInt, -1),
+        context,
+        get_i as *const (),
+    );
     context.update_symbol(_s);
 
-    let mut s: Symbol = add_ext_func("put_d", SymbolType::new(TypeName::TbVoid, -1), context);
+    let mut s: Symbol = add_ext_func(
+        "put_d",
+        SymbolType::new(TypeName::TbVoid, -1),
+        context,
+        put_d as *const (),
+    );
     add_func_arg(&mut s, "s", SymbolType::new(TypeName::TbDouble, -1));
     context.update_symbol(s);
 
-    let _s: Symbol = add_ext_func("get_d", SymbolType::new(TypeName::TbDouble, -1), context);
+    let _s: Symbol = add_ext_func(
+        "get_d",
+        SymbolType::new(TypeName::TbDouble, -1),
+        context,
+        get_d as *const (),
+    );
     context.update_symbol(_s);
 
-    let mut s: Symbol = add_ext_func("put_c", SymbolType::new(TypeName::TbVoid, -1), context);
+    let mut s: Symbol = add_ext_func(
+        "put_c",
+        SymbolType::new(TypeName::TbVoid, -1),
+        context,
+        put_c as *const (),
+    );
     add_func_arg(&mut s, "c", SymbolType::new(TypeName::TbChar, -1));
     context.update_symbol(s);
 
-    let _s: Symbol = add_ext_func("get_c", SymbolType::new(TypeName::TbChar, -1), context);
+    let _s: Symbol = add_ext_func(
+        "get_c",
+        SymbolType::new(TypeName::TbChar, -1),
+        context,
+        get_s as *const (),
+    );
     context.update_symbol(_s);
 
-    let _s: Symbol = add_ext_func("seconds", SymbolType::new(TypeName::TbDouble, -1), context);
+    let _s: Symbol = add_ext_func(
+        "seconds",
+        SymbolType::new(TypeName::TbDouble, -1),
+        context,
+        seconds as *const (),
+    );
     context.update_symbol(_s);
 }
-
+fn put_s() {}
+fn get_s(s: &str) {}
+fn put_i() {
+    println!("hello from ext func");
+}
+fn get_i() -> i64 {
+    return 0;
+}
+fn put_d() {}
+fn get_d() -> f64 {
+    return 0.;
+}
+fn put_c() {}
+fn get_c() -> char {
+    return 0 as char;
+}
+fn seconds() -> f64 {
+    return 0.;
+}
+pub fn require_symbol(contexts: &Vec<Context>, name: &str) -> Symbol {
+    for context in contexts.iter().rev() {
+        match context.find_symbol(name) {
+            Some(s) => return s,
+            None => continue,
+        }
+    }
+    panic!("Undefined symbol: {}", name);
+}
 #[cfg(test)]
 pub mod tests {
     use crate::symbols::*;
@@ -345,15 +438,12 @@ pub mod tests {
             name: String::from("x"),
             class: ClassType::ClsVar,
             storage: StorageType::MemArg,
-            depth: 0,
-            line: 0,
             symbol_type: SymbolType {
                 type_base: TypeName::TbChar,
                 struct_symbol: None,
                 num_elements: -1,
             },
-            am: None,
-            table: 0,
+            ..Default::default()
         };
         let s2 = Symbol {
             name: String::from("y"),
@@ -373,15 +463,12 @@ pub mod tests {
             name: String::from("x"),
             class: ClassType::ClsVar,
             storage: StorageType::MemArg,
-            depth: 0,
-            line: 0,
             symbol_type: SymbolType {
                 type_base: TypeName::TbChar,
                 struct_symbol: None,
                 num_elements: -1,
             },
-            am: None,
-            table: 0,
+            ..Default::default()
         };
         let s2 = Symbol {
             name: String::from("x"),

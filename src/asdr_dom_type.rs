@@ -100,6 +100,7 @@ impl SyntaxAnalyser {
                     depth: self.symbol_tables[self.current_table_idx].depth,
                     am: None,
                     table: self.current_table_idx,
+                    ..Default::default()
                 };
                 if let Some(ref mut cs) = self.current_symbol {
                     cs.add_symbol(symbol);
@@ -122,6 +123,7 @@ impl SyntaxAnalyser {
                     depth: self.symbol_tables[self.current_table_idx].depth,
                     am: None,
                     table: self.current_table_idx,
+                    ..Default::default()
                 };
 
                 if self.is_function_context {
@@ -142,6 +144,7 @@ impl SyntaxAnalyser {
                     depth: self.symbol_tables[self.current_table_idx].depth,
                     am: None,
                     table: self.current_table_idx,
+                    ..Default::default()
                 };
                 self.symbol_tables[self.current_table_idx].add_symbol(symbol);
             }
@@ -209,6 +212,7 @@ impl SyntaxAnalyser {
                         depth: self.symbol_tables[self.current_table_idx].depth,
                         am: Some(IndexMap::new()),
                         table: 0,
+                        ..Default::default()
                     };
                     // Add a new context
                     self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
@@ -394,6 +398,7 @@ impl SyntaxAnalyser {
             depth: self.symbol_tables[self.current_table_idx].depth,
             am: Some(IndexMap::new()), // Init func arguments
             table: 0,
+            ..Default::default()
         };
         // Add a new context
         self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
@@ -481,6 +486,7 @@ impl SyntaxAnalyser {
             depth: self.symbol_tables[self.current_table_idx].depth,
             am: None, // Init func arguments
             table: 0,
+            ..Default::default()
         };
         // Add a new context
         self.symbol_tables[self.current_table_idx].add_symbol(symbol.clone());
