@@ -1,5 +1,4 @@
-use crate::symbols::{add_ext_funcs, require_symbol, Context};
-use std::mem::{size_of, size_of_val, transmute};
+use std::mem::{size_of, transmute};
 use std::ptr::{null, null_mut};
 #[derive(Copy, Clone, Debug)]
 
@@ -99,9 +98,9 @@ impl VirtualMachine {
         let sp = null_mut();
         let stack_after = null_mut();
         let mut mv = Self {
-            sp: sp,
-            stack_after: stack_after,
-            stack: stack,
+            sp,
+            stack_after,
+            stack,
         };
         mv.sp = mv.stack.as_mut_ptr();
         mv.stack_after = unsafe { mv.sp.add(STACK_SIZE) };
@@ -138,14 +137,14 @@ impl VirtualMachine {
         let (mut cval1, mut cval2) = (0 as char, 0 as char);
         let (mut dval1, mut dval2) = (0., 0.);
         let (mut aval1, mut aval2) = (null::<()>(), null::<()>());
-        let mut stack_after = self.stack_after;
+        let stack_after = self.stack_after;
         let mut fp = null_mut();
         let mut ip = instr_list.front;
         loop {
             print!("{:p} | {}\t", ip, unsafe {
                 self.sp.offset_from(self.stack.as_ptr())
             });
-            let mut ipi = unsafe { *ip };
+            let ipi = unsafe { *ip };
             match ipi.opcode {
                 Opcode::OCall => {
                     aval1 = ipi.arg1.unwrap_or_default().get_addr();
@@ -917,11 +916,11 @@ impl InstrList {
             self.front = i;
         }
         self.back = i;
-        return i;
+        i
     }
     fn push_back_op(&mut self, op: Opcode) -> *const Instr {
         let i = Instr::new(op).as_mut_ptr();
-        return self.push_back(i);
+        self.push_back(i)
     }
     fn insert_after(&mut self, after: *mut Instr, i: *mut Instr) {
         unsafe {
@@ -968,14 +967,13 @@ fn check_global_size(num_globals: usize, size: usize) {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::lexer::Lexer;
     use crate::mv::*;
-    use std::collections::LinkedList;
+    use crate::symbols::{add_ext_funcs, require_symbol, Context};
     #[test]
     fn mv_test() {
         let mut instr_list = InstrList::new();
         let globals: [u8; GLOBAL_SIZE] = [0; GLOBAL_SIZE];
-        let num_globals: usize = 0;
+        let _num_globals: usize = 0;
         // Init a context
         let mut contexts = vec![Context::default()];
         add_ext_funcs(&mut contexts[0]);

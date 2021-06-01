@@ -402,23 +402,23 @@ pub fn add_ext_funcs(context: &mut Context) {
     context.update_symbol(_s);
 }
 fn put_s() {}
-fn get_s(s: &str) {}
+fn get_s(_s: &str) {}
 fn put_i() {
     println!("hello from ext func");
 }
 fn get_i() -> i64 {
-    return 0;
+    0
 }
 fn put_d() {}
 fn get_d() -> f64 {
-    return 0.;
+    0.
 }
 fn put_c() {}
 fn get_c() -> char {
-    return 0 as char;
+    0 as char
 }
 fn seconds() -> f64 {
-    return 0.;
+    0.
 }
 pub fn require_symbol(contexts: &Vec<Context>, name: &str) -> Symbol {
     for context in contexts.iter().rev() {
