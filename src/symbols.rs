@@ -8,7 +8,6 @@ pub enum TypeName {
     TbDouble,
     TbChar,
     TbStruct,
-    TbFunc,
     TbVoid,
 }
 
@@ -28,7 +27,6 @@ pub enum StorageType {
     MemLocal,
     MemArg,
     MemStruct,
-    MemDeclaration,
     MemBuiltin,
 }
 #[derive(Clone, Debug, PartialEq)]

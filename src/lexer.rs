@@ -49,35 +49,36 @@ pub enum TokenType {
     Error,
 }
 impl TokenType {
-    pub fn get_id(&self) -> String {
-        if let TokenType::Id(s) = self {
-            return String::from(s);
+    pub fn get_id(&self) -> Option<String> {
+        if let TokenType::Id(id) = self {
+            return Some(String::from(id));
         }
-        String::from("")
+        //String::from("")
+        None
     }
-    pub fn get_char(&self) -> char {
+    pub fn get_char(&self) -> Option<char> {
         if let TokenType::CtChar(s) = self {
-            return *s;
+            return Some(*s);
         }
-        0 as char
+        None
     }
-    pub fn get_int(&self) -> isize {
-        if let TokenType::CtInt(s) = self {
-            return *s;
+    pub fn get_int(&self) -> Option<isize> {
+        if let TokenType::CtInt(i) = self {
+            return Some(*i);
         }
-        0
+        None
     }
-    pub fn get_double(&self) -> f32 {
-        if let TokenType::CtReal(s) = self {
-            return *s;
+    pub fn get_double(&self) -> Option<f32> {
+        if let TokenType::CtReal(d) = self {
+            return Some(*d);
         }
-        0.
+        None
     }
-    pub fn get_string(&self) -> String {
+    pub fn get_string(&self) -> Option<String> {
         if let TokenType::CtString(s) = self {
-            return s.to_string();
+            return Some(s.to_string());
         }
-        String::from("")
+        None
     }
 
     pub fn discriminant_value(&self) -> u8 {

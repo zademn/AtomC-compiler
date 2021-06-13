@@ -85,7 +85,7 @@ impl SyntaxAnalyser {
     }
 
     fn add_var(&mut self, token: &Token, s_type: &mut SymbolType) {
-        let token_name = token.token_type.get_id();
+        let token_name = token.token_type.get_id().unwrap();
         match self.current_symbol {
             Some(Symbol {
                 class: ClassType::ClsStruct,
@@ -198,7 +198,7 @@ impl SyntaxAnalyser {
                 //let token_temp = self.token_vec[self.current_token_idx - 1].clone();
                 let token_temp = self.consumed_token.as_ref().unwrap().clone();
                 if self.consume(TokenType::Lacc.discriminant_value()) {
-                    let token_name = token_temp.token_type.get_id();
+                    let token_name = token_temp.token_type.get_id().unwrap();
                     let symbol = Symbol {
                         name: token_name,
                         symbol_type: SymbolType {
@@ -313,7 +313,7 @@ impl SyntaxAnalyser {
         }) || (self.consume(TokenType::Struct.discriminant_value()) && {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
                 let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-                let token_name = token_temp.token_type.get_id();
+                let token_name = token_temp.token_type.get_id().unwrap();
                 // Search for struct in global context
                 match self.find_symbol_global(&token_name) {
                     Some(s) => {
@@ -385,7 +385,7 @@ impl SyntaxAnalyser {
     }
 
     fn decl_func_context(&mut self, token: &Token, symbol_type: &mut SymbolType) {
-        let token_name = token.token_type.get_id();
+        let token_name = token.token_type.get_id().unwrap();
         if self.current_table_idx != 0 {
             self.token_error("Functions must be declared on global level") // TODO is this necessary?
         }
@@ -442,7 +442,7 @@ impl SyntaxAnalyser {
             && self.consume(TokenType::Id("".to_string()).discriminant_value())
         {
             let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-            let _token_name = token_temp.token_type.get_id();
+            let _token_name = token_temp.token_type.get_id().unwrap();
             if self.consume(TokenType::Lpar.discriminant_value()) {
                 self.decl_func_context(&token_temp, &mut symbol_type);
                 self.rule_func_arg(); // funcarg is optional
@@ -476,7 +476,7 @@ impl SyntaxAnalyser {
     }
 
     fn add_func_arg(&mut self, token: &Token, symbol_type: &mut SymbolType) {
-        let token_name = token.token_type.get_id();
+        let token_name = token.token_type.get_id().unwrap();
         let symbol = Symbol {
             name: token_name,
             symbol_type: symbol_type.clone(),
@@ -1113,7 +1113,7 @@ impl SyntaxAnalyser {
         if self.consume(TokenType::Dot.discriminant_value()) {
             if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
                 let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-                let token_name = token_temp.token_type.get_id();
+                let token_name = token_temp.token_type.get_id().unwrap();
                 let s_struct = rv.symbol_type.as_ref().unwrap();
                 if s_struct.struct_symbol.is_none() {
                     self.token_error(&format!("`{}`'s parent is not a struct", token_name));
@@ -1157,7 +1157,7 @@ impl SyntaxAnalyser {
         let mut is_func = false;
         if self.consume(TokenType::Id("".to_string()).discriminant_value()) {
             let token_temp = self.token_vec[self.current_token_idx - 1].clone();
-            let token_name = token_temp.token_type.get_id();
+            let token_name = token_temp.token_type.get_id().unwrap();
             let mut arg = RetVal::default();
             let ss = self.find_symbol_everywhere(&token_name);
             match &ss {
@@ -1247,7 +1247,7 @@ impl SyntaxAnalyser {
         if self.consume(TokenType::CtInt(0).discriminant_value()) {
             let i = self.token_vec[self.current_token_idx - 1]
                 .token_type
-                .get_int();
+                .get_int().unwrap();
             rv.symbol_type = Some(SymbolType::new(TypeName::TbInt, -1));
             rv.ctval = Some(CtVal::IntChar(i));
             rv.is_ctval = true;
@@ -1257,7 +1257,7 @@ impl SyntaxAnalyser {
         if self.consume(TokenType::CtChar('a').discriminant_value()) {
             let i = self.token_vec[self.current_token_idx - 1]
                 .token_type
-                .get_char();
+                .get_char().unwrap();
             rv.symbol_type = Some(SymbolType::new(TypeName::TbChar, -1));
             rv.ctval = Some(CtVal::IntChar(i as isize));
             rv.is_ctval = true;
@@ -1267,7 +1267,7 @@ impl SyntaxAnalyser {
         if self.consume(TokenType::CtReal(0.).discriminant_value()) {
             let i = self.token_vec[self.current_token_idx - 1]
                 .token_type
-                .get_double();
+                .get_double().unwrap();
             rv.symbol_type = Some(SymbolType::new(TypeName::TbDouble, -1));
             rv.ctval = Some(CtVal::Double(i));
             rv.is_ctval = true;
@@ -1280,7 +1280,7 @@ impl SyntaxAnalyser {
                 .as_ref()
                 .unwrap()
                 .token_type
-                .get_string();
+                .get_string().unwrap();
             rv.symbol_type = Some(SymbolType::new(TypeName::TbChar, 0));
             rv.ctval = Some(CtVal::String(i));
             rv.is_ctval = true;
